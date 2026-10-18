@@ -1,0 +1,10 @@
+{
+  "name": "dsh-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:web": "rm -rf dist && mkdir -p dist && cp -r static/* dist/",
+    "build:tauri": "npm run build:web && (cd src-tauri && cargo tauri build --release)",
+    "dist": "npm run build:tauri"
+  }
+}
