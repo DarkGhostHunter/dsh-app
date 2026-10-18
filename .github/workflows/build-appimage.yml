@@ -86,6 +86,13 @@ jobs:
         working-directory: deepseek-harness
         run: pnpm install --frozen-lockfile
 
+      # Root orchestrator (scripts/build.ts): builds all workspace packages
+      # in dependency order. The frontend vite build resolves workspace
+      # packages from their lib/ output and fails without this step.
+      - name: Build upstream packages
+        working-directory: deepseek-harness
+        run: pnpm build
+
       - name: Build upstream web frontend
         working-directory: deepseek-harness
         run: pnpm --filter @deepseek-ai/dsh-web-frontend run build
