@@ -24,6 +24,10 @@
     "active": true,
     "targets": ["appimage"],
     "category": "DeveloperTool",
+    "resources": [
+      "resources/dsh",
+      "resources/node"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

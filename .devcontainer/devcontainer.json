@@ -11,7 +11,7 @@
   "containerEnv": {
     "DISPLAY": "${localEnv:DISPLAY}"
   },
-  "forwardPorts": [5173, 1420],
+  "forwardPorts": [5373, 1420],
   "customizations": {
     "vscode": {
       "extensions": [

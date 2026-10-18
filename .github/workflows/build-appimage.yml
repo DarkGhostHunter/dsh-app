@@ -97,11 +97,24 @@ jobs:
         working-directory: deepseek-harness
         run: pnpm --filter @deepseek-ai/dsh-web-frontend run build
 
-      - name: Copy build output into Tauri dist
+      # The webview never loads dist/ directly: the frontend needs the Host's
+      # rendered boot injections, so the shell spawns `dsh web` as a sidecar
+      # and navigates to its URL. dist/ only carries the loader page.
+      - name: Build Tauri loader page
+        run: npm run build:web
+
+      - name: Stage Node runtime
         run: |
-          rm -rf dist
-          mkdir -p dist
-          cp -a deepseek-harness/apps/web/dist/. dist/
+          NODE_VERSION=22.14.0
+          curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"
+          mkdir -p src-tauri/resources/node
+          tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C src-tauri/resources/node --strip-components=1
+
+      - name: Stage harness workspace
+        run: |
+          rm -rf src-tauri/resources/dsh
+          cp -a deepseek-harness src-tauri/resources/dsh
+          rm -rf src-tauri/resources/dsh/.git
 
       - name: Build AppImage
         run: npx @tauri-apps/cli@^2 build --bundles appimage
