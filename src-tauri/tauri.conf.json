@@ -25,8 +25,7 @@
     "targets": ["appimage"],
     "category": "DeveloperTool",
     "resources": [
-      "resources/dsh",
-      "resources/node"
+      "resources/runtime.tar"
     ],
     "icon": [
       "icons/32x32.png",

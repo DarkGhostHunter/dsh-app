@@ -103,18 +103,20 @@ jobs:
       - name: Build Tauri loader page
         run: npm run build:web
 
-      - name: Stage Node runtime
+      # The runtime ships as one tar file: linuxdeploy scans every ELF in the
+      # AppDir and node_modules contains binaries it cannot deploy (static
+      # esbuild builds, musl variants, foreign-arch prebuilds). The shell
+      # extracts the archive to the app-data dir on first launch.
+      - name: Stage runtime archive
         run: |
           NODE_VERSION=22.14.0
           curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"
-          mkdir -p src-tauri/resources/node
-          tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C src-tauri/resources/node --strip-components=1
-
-      - name: Stage harness workspace
-        run: |
-          rm -rf src-tauri/resources/dsh
-          cp -a deepseek-harness src-tauri/resources/dsh
-          rm -rf src-tauri/resources/dsh/.git
+          mkdir -p stage/node stage/dsh
+          tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C stage/node --strip-components=1
+          cp -a deepseek-harness/. stage/dsh/
+          rm -rf stage/dsh/.git
+          tar -cf src-tauri/resources/runtime.tar -C stage node dsh
+          rm -rf stage
 
       - name: Build AppImage
         run: npx @tauri-apps/cli@^2 build --bundles appimage

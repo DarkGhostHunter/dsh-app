@@ -10,39 +10,55 @@ use tauri::Manager;
 /// The sidecar `dsh web` process, killed when the app exits.
 struct DshProcess(Mutex<Option<Child>>);
 
-/// Directory holding the bundled harness workspace: `apps/cli/lib/bin.js`
-/// and the installed workspace `node_modules`. `DSH_RUNTIME_DIR` overrides
-/// it so dev runs can point at a local deepseek-harness clone.
-fn workspace_root(app: &tauri::AppHandle) -> PathBuf {
+/// Directory holding the extracted runtime: `dsh/` (the harness workspace
+/// with `apps/cli/lib/bin.js` and its `node_modules`) and `node/bin/node`.
+/// `DSH_RUNTIME_DIR` overrides it so dev runs can point at a local
+/// deepseek-harness clone and the system Node.
+fn runtime_root(app: &tauri::AppHandle) -> PathBuf {
     std::env::var("DSH_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|_| {
         app.path()
-            .resource_dir()
-            .expect("no resource directory")
-            .join("dsh")
+            .app_data_dir()
+            .expect("no app data directory")
+            .join("runtime")
     })
 }
 
-/// The Node interpreter bundled next to the workspace (`node/bin/node`).
-/// Falls back to `PATH` so dev runs can use the system Node.
-fn node_bin(app: &tauri::AppHandle) -> PathBuf {
-    let bundled = app
-        .path()
-        .resource_dir()
-        .map(|dir| dir.join("node").join("bin").join("node"));
-    match (std::env::var("DSH_RUNTIME_DIR"), bundled) {
-        (Ok(_), Ok(node)) if node.exists() => node,
-        (_, Ok(node)) if node.exists() => node,
-        _ => PathBuf::from("node"),
+/// Extract `resources/runtime.tar` into the app-data runtime directory on
+/// first launch. The payload ships as one archive because linuxdeploy scans
+/// every ELF in the AppDir and node_modules contains dozens it cannot deploy
+/// (static esbuild builds, musl variants, foreign-arch prebuilds).
+fn ensure_runtime_extracted(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let root = runtime_root(app);
+    let marker = root.join("dsh").join("apps").join("cli").join("lib").join("bin.js");
+    if marker.exists() {
+        return Ok(());
     }
+    let archive = app
+        .path()
+        .resource_dir()?
+        .join("runtime.tar");
+    std::fs::create_dir_all(&root)?;
+    let status = Command::new("tar")
+        .arg("-xf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&root)
+        .status()?;
+    if !status.success() {
+        return Err(format!("runtime extraction failed: {status}").into());
+    }
+    Ok(())
 }
 
 fn spawn_dsh(app: &tauri::AppHandle) -> Result<Child, Box<dyn std::error::Error>> {
-    let root = workspace_root(app);
-    let bin = root.join("apps").join("cli").join("lib").join("bin.js");
-    Ok(Command::new(node_bin(app))
+    let root = runtime_root(app);
+    let bin = root.join("dsh").join("apps").join("cli").join("lib").join("bin.js");
+    let node = root.join("node").join("bin").join("node");
+    let node = if node.exists() { node } else { PathBuf::from("node") };
+    Ok(Command::new(node)
         .arg(bin)
         .args(["web", "--no-open", "--port", "0"])
-        .current_dir(&root)
+        .current_dir(root.join("dsh"))
         .env("NODE_ENV", "production")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -61,6 +77,7 @@ fn main() {
         .manage(DshProcess(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();
+            ensure_runtime_extracted(&handle)?;
             let mut child = spawn_dsh(&handle)?;
             let stdout = child.stdout.take().expect("piped stdout");
             *handle.state::<DshProcess>().0.lock().unwrap() = Some(child);

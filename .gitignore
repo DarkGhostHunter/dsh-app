@@ -152,13 +152,14 @@ vite.config.ts.timestamp-*
 target/
 dist/
 
-# Bundled runtime staging (populated by CI; placeholders kept for local builds)
-src-tauri/resources/dsh/*
-!src-tauri/resources/dsh/README.md
-src-tauri/resources/node/**
-!src-tauri/resources/node/bin/
-
-# Prototype working artifacts from devcontainer runs
+# Runtime archive (staged by CI; tar of workspace + node)
+src-tauri/resources/runtime.tar
+node-v*-linux-x64.tar.xz
 deepseek-harness/
 dsh-runtime/
 src-tauri/gen/
+
+
+# Prototype working artifacts (devcontainer runs)
+deepseek-harness/
+dsh-runtime/
