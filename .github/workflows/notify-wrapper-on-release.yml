@@ -1,0 +1,15 @@
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-wrapper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository dispatch to wrapper repo
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.RELEASE_SYNC_PAT }}
+          repository: OWNER/WRAPPER-REPO
+          event-type: release-published
+          client-payload: '{"tag": "${{ github.event.release.tag_name }}", "release_body": "${{ github.event.release.body }}", "name": "${{ github.event.release.name }}"}'

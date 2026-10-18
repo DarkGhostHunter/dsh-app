@@ -1,20 +1,43 @@
 {
-  "package": {
-    "productName": "DSH App",
-    "version": "0.1.0"
+  "build": {
+    "beforeBuildCommand": "",
+    "beforeDevCommand": "",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "DeepSeek Harness",
+        "width": 1280,
+        "height": 900,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["appimage"],
+    "identifier": "ai.deepseek.harness",
+    "publisher": "DarkGhostHunter",
+    "icon": ["icons/icon.png"]
+  },
+  "plugins": {
+    "updater": {
+      "active": true
+    }
   },
   "tauri": {
-    "bundle": {
-      "active": true,
-      "targets": ["appimage"],
-      "identifier": "com.darkghosthunter.dshapp"
-    },
     "updater": {
       "active": true,
       "dialog": true,
       "endpoints": [
-        "https://github.com/DarkGhostHunter/dsh-app/releases/latest/download/manifest.json"
+        "https://api.github.com/repos/DarkGhostHunter/dsh-app/releases/latest"
       ]
+    },
+    "security": {
+      "csp": null
     }
   }
 }
