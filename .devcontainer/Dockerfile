@@ -28,7 +28,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Rust (stable) with the common Tauri components, as the default user
-RUN su vscode -c "rustup toolchain install stable --profile minimal --component clippy rustfmt && rustup default stable"
+RUN su vscode -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --component clippy,rustfmt"
 
 # Tauri CLI in the user's cargo home
-RUN su vscode -c "cargo install tauri-cli --locked --version ^2.0"
+RUN su - vscode -c "cargo install tauri-cli --locked --version ^2.0"
