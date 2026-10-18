@@ -1,0 +1,20 @@
+{
+  "package": {
+    "productName": "DSH App",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "targets": ["appimage"],
+      "identifier": "com.darkghosthunter.dshapp"
+    },
+    "updater": {
+      "active": true,
+      "dialog": true,
+      "endpoints": [
+        "https://github.com/DarkGhostHunter/dsh-app/releases/latest/download/manifest.json"
+      ]
+    }
+  }
+}
