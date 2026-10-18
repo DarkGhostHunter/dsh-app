@@ -1,0 +1,33 @@
+name: Watch upstream releases
+
+# We don't control deepseek-ai/deepseek-harness, so we can't place a
+# notify workflow there. Instead, poll its tags on a schedule and
+# trigger a build for any stable tag we haven't released yet.
+
+on:
+  schedule:
+    - cron: '23 * * * *' # hourly
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for unreleased upstream tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api repos/deepseek-ai/deepseek-harness/tags --paginate \
+            --jq '[.[].name | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))][0]')
+          echo "Latest upstream tag: $TAG"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Already released here; nothing to do."
+          else
+            echo "New upstream release detected; dispatching build."
+            gh workflow run build-appimage.yml --repo "$GITHUB_REPOSITORY" \
+              -f tag="$TAG"
+          fi

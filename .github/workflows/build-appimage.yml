@@ -1,0 +1,111 @@
+name: Build AppImage from upstream release
+
+# Builds the deepseek-harness web frontend at a given upstream tag,
+# wraps it with Tauri, and publishes the AppImage as a GitHub Release.
+# Triggered manually, by the watch-upstream poller, or by repository_dispatch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Upstream tag to build (e.g. dsh-v0.2.1-rc.2). Empty = latest tag.'
+        required: false
+        default: ''
+  repository_dispatch:
+    types: [deepseek-release]
+
+permissions:
+  contents: write
+
+jobs:
+  build-appimage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve upstream tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.client_payload.tag || inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh api repos/deepseek-ai/deepseek-harness/tags --jq '[.[].name | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))][0]')
+          fi
+          if [ -z "$TAG" ]; then
+            echo "No upstream tag found" >&2
+            exit 1
+          fi
+          echo "Building upstream tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout dsh-app
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install system dependencies for Tauri Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Clone deepseek-harness at tag
+        run: |
+          rm -rf deepseek-harness
+          git clone --depth 1 --branch "${{ steps.tag.outputs.tag }}" \
+            https://github.com/deepseek-ai/deepseek-harness.git deepseek-harness
+
+      - name: Install upstream dependencies
+        working-directory: deepseek-harness
+        run: pnpm install --frozen-lockfile
+
+      - name: Build upstream web frontend
+        working-directory: deepseek-harness
+        run: pnpm --filter @deepseek-ai/dsh-web-frontend run build
+
+      - name: Copy build output into Tauri dist
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          cp -a deepseek-harness/apps/web/dist/. dist/
+
+      - name: Build AppImage
+        run: npx @tauri-apps/cli@^2 build --bundles appimage
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: DeepSeek Harness Desktop ${{ steps.tag.outputs.tag }}
+          body: |
+            Desktop AppImage wrapper for [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) at `${{ steps.tag.outputs.tag }}`.
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
+          files: src-tauri/target/release/bundle/appimage/*.AppImage

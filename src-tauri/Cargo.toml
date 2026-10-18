@@ -7,4 +7,9 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["updater"] }
+tauri = { version = "2" }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
