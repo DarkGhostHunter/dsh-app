@@ -35,8 +35,9 @@ Manual triggers: `workflow_dispatch` with a `tag` input, or `repository_dispatch
 ## Repo layout
 
 - `patches/linux-packaging.patch` — the diff above, applied to the clone at build time.
+- `scripts/regenerate-patch.py` — the patch expressed as exact-match replacements; regenerates the `.patch` file against any upstream tag and names the anchor when one drifts. See [AGENTS.md](AGENTS.md) for the drift playbook.
 - `scripts/local-build.sh` — replica of the CI pipeline for local runs.
-- `.github/workflows/` — the two workflows described above.
+- `.github/workflows/` — the three workflows: release build, hourly upstream watcher, and a weekly patch-drift check that opens an issue when the patch stops applying.
 
 ## Local build
 

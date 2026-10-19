@@ -394,15 +394,3 @@ index 2afdfd71..17fb94a4 100644
        event.preventDefault()
        if (updateDialog.isOpen) { updateDialog.focus(); return }
        const hide = (): void => {
-diff --git a/apps/desktop/src/welcome-window.ts b/apps/desktop/src/welcome-window.ts
-index 61fda9e3..0dad8510 100644
---- a/apps/desktop/src/welcome-window.ts
-+++ b/apps/desktop/src/welcome-window.ts
-@@ -36,6 +36,7 @@ export function welcomeWindowOptions(platform: NodeJS.Platform, locale: DesktopL
-       titleBarOverlay: { color: '#00000000', symbolColor: '#0F1115', height: 42 },
-       backgroundMaterial: 'acrylic',
-     } as const : {}),
-+
-     webPreferences: {
-       preload: fileURLToPath(new URL('./preload-welcome.cjs', import.meta.url)),
-       additionalArguments: [`--dsh-welcome-locale=${locale.id}`],

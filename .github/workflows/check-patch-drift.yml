@@ -1,0 +1,74 @@
+name: Check patch drift
+
+# Weekly check that patches/linux-packaging.patch still applies to the latest
+# upstream tag. The build workflow fails loudly on drift anyway; this only
+# finds out earlier, when no release is waiting on the result.
+
+on:
+  schedule:
+    - cron: '37 6 * * 1' # Mondays, off the hour of the watcher
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout dsh-app
+        uses: actions/checkout@v4
+
+      - name: Resolve latest upstream tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh api repos/deepseek-ai/deepseek-harness/tags --jq '[.[].name | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))][0]')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Clone deepseek-harness at tag
+        run: |
+          rm -rf deepseek-harness
+          git clone --depth 1 --branch "${{ steps.tag.outputs.tag }}" \
+            https://github.com/deepseek-ai/deepseek-harness.git deepseek-harness
+
+      - name: Check patch applies
+        id: check
+        run: |
+          if git -C deepseek-harness apply --check ../patches/linux-packaging.patch; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            # The regeneration script names the exact anchors that no longer match.
+            python3 scripts/regenerate-patch.py > drift-report.txt 2>&1 || true
+          fi
+
+      - name: Open drift issue
+        if: steps.check.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if gh issue list --state open --search "Patch drift in:title" | grep -q .; then
+            echo "A drift issue is already open; appending nothing."
+            exit 0
+          fi
+          {
+            echo "The Linux packaging patch no longer applies to upstream \`${TAG}\`."
+            echo "Releases are failing or will fail at the patch step."
+            echo
+            echo "Fix: follow [AGENTS.md](AGENTS.md) — run \`python3 scripts/regenerate-patch.py\`"
+            echo "against the drifted tag, fix the reported anchors, rebuild locally, then"
+            echo "commit the regenerated patch."
+            echo
+            echo '<details><summary>Drift report</summary>'
+            echo
+            echo '```'
+            head -100 drift-report.txt
+            echo '```'
+            echo '</details>'
+          } > issue-body.md
+          gh issue create --title "Patch drift: linux-packaging.patch does not apply to ${TAG}" \
+            --body-file issue-body.md
