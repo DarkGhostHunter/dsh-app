@@ -1,33 +1,47 @@
 # dsh-app
 
-Tauri desktop wrapper that packages the [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) web frontend as a Linux AppImage, and follows upstream releases automatically.
+Electron AppImage wrapper for [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) on Linux x64. Upstream's Desktop app is deeply invested in Electron as a feature platform (updater, guests, platform view, shortcuts), so we don't reimplement any of it — we run upstream's own Desktop shell and packaging pipeline.
 
 ## How it works
 
-We don't control the upstream repo, so there is no webhook on their side. Instead:
+Upstream ships Desktop release targets for macOS and Windows only, but its electron-builder config already declares a Linux AppImage target and its runtime-preparation layer already locks `linux-x64` interpreters. The gap is small: [patches/linux-packaging.patch](patches/linux-packaging.patch) registers a `linux-x64` release target across upstream's packaging scripts —
 
-1. **[watch-upstream.yml](.github/workflows/watch-upstream.yml)** runs hourly, polls `deepseek-ai/deepseek-harness` tags via the GitHub API, and dispatches a build when it finds a stable tag (`dsh-vX.Y.Z…`) that has no matching release in this repo yet.
-2. **[build-appimage.yml](.github/workflows/build-appimage.yml)** clones upstream at that tag, builds the `@deepseek-ai/dsh-web-frontend` package (`apps/web`, vite → `dist/`), drops the output into `dist/`, wraps it with Tauri, and publishes an AppImage to a GitHub Release tagged with the same upstream tag.
+- `desktop-build-paths.mjs` / `package-target.ts`: accept and select the target,
+- `prepare-dsh.ts` / `prepare-runtime.ts`: the Linux Electron executable layout (`electron`, not `Electron.app/Contents/MacOS/Electron`),
+- `prepare-cli.ts` / `cli/dsh`: the installed `dsh` launcher resolves the Linux bundle layout,
+- `desktop-package-environment.mjs` / `desktop-toolchain-preflight.ts`: no macOS/Windows signing settings on Linux,
+- `smoke-packaged-runtime.ts`: smoke-test the `linux-unpacked` bundle,
+- `electron-builder-config.mjs`: icon and executable name for the existing `linux: { target: ['AppImage'] }` block.
 
-You can also trigger a build manually (`workflow_dispatch` with a `tag` input) or via `repository_dispatch` with event type `deepseek-release` and a `client_payload.tag`.
+Everything else — workspace build, primary-runtime preparation (Node + Python + pnpm payload), the production `dsh` tree, electron-builder, and the packaged smoke test — is upstream's own pipeline, unmodified. Builds run `pnpm --filter @deepseek-ai/dsh-desktop run package -- linux-x64 --unsigned`: Linux needs no signing credentials, and `--unsigned` also skips upstream's Tencent COS update-feed wiring, which this repository cannot publish.
+
+Releases follow upstream automatically:
+
+1. **[watch-upstream.yml](.github/workflows/watch-upstream.yml)** runs hourly, polls upstream tags via the GitHub API, and dispatches a build when it finds a tag (`dsh-vX.Y.Z…`) with no matching release here yet.
+2. **[build-appimage.yml](.github/workflows/build-appimage.yml)** clones upstream at that tag, applies the Linux packaging patch, runs upstream's Desktop packaging pipeline for `linux-x64`, and publishes the AppImage to a GitHub Release tagged with the same upstream tag.
+
+Manual triggers: `workflow_dispatch` with a `tag` input, or `repository_dispatch` (`deepseek-release`, `client_payload.tag`).
 
 ## Repo layout
 
-- `static/index.html` — fallback frontend, used only for local smoke builds. CI replaces `dist/` with the upstream build.
-- `src-tauri/` — Tauri 2 shell (`tauri.conf.json` targets `appimage`, `frontendDist: ../dist`).
+- `patches/linux-packaging.patch` — the diff above, applied to a pristine upstream clone at build time.
+- `scripts/local-build.sh` — replica of the CI pipeline for local runs.
 - `.github/workflows/` — the two workflows described above.
 
-## Local development
+## Local build
+
+Requires the devcontainer (Node 22+, pnpm 11), then:
 
 ```sh
-npm run build:web        # copy static/ -> dist/
-cargo tauri dev          # run the shell
-cargo tauri build --bundles appimage
+bash scripts/local-build.sh                 # latest upstream tag
+bash scripts/local-build.sh dsh-v0.2.1-rc.2 # a specific tag
 ```
 
-Building the real app locally requires the upstream monorepo (pnpm, Node 22+); the CI workflow does this for you.
+The AppImage lands in `deepseek-harness/apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/`.
 
 ## Notes
 
-- Pre-release upstream tags (e.g. `-rc.1`, `-alpha.3`) are built as pre-releases here.
-- No Tauri updater plugin is configured yet — enabling it later requires signing keys (`TAURI_SIGNING_PRIVATE_KEY`) and a `latest.json` manifest per release.
+- Pre-release upstream tags (e.g. `-rc.1`, `-alpha.3`) are published as pre-releases here.
+- Artifacts are unsigned and carry upstream's `-unsigned` suffix, so a shared file can never pass for a release artifact — upstream's own convention.
+- **Office→PDF conversion is unavailable on Linux**: upstream's `libreoffice-kit` publishes native engines for macOS and Windows only, and no Linux engine package is on the public registry. The packaging smoke test skips the conversion check on Linux accordingly.
+- The auto-updater is dormant in these builds (no update feed is published). Wiring `electron-updater` to a generic feed (e.g. GitHub Releases) is a possible follow-up via the same patch.

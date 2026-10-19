@@ -148,18 +148,9 @@ vite.config.ts.timestamp-*
 # Turbo Repo
 .turbo
 
-# Rust / Tauri build output
-target/
-dist/
-
-# Runtime archive (staged by CI; tar of workspace + node)
-src-tauri/resources/runtime.tar
-node-v*-linux-x64.tar.xz
+# Upstream clone (staged by CI and local builds)
 deepseek-harness/
-dsh-runtime/
-src-tauri/gen/
 
+# Upstream Desktop packaging output
+apps/desktop/.desktop-build/
 
-# Prototype working artifacts (devcontainer runs)
-deepseek-harness/
-dsh-runtime/

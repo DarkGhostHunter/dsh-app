@@ -1,8 +1,9 @@
 name: Build AppImage from upstream release
 
-# Builds the deepseek-harness web frontend at a given upstream tag,
-# wraps it with Tauri, and publishes the AppImage as a GitHub Release.
-# Triggered manually, by the watch-upstream poller, or by repository_dispatch.
+# Builds the deepseek-harness Desktop Electron app at a given upstream tag
+# with upstream's own packaging pipeline (patched for a linux-x64 target) and
+# publishes the AppImage as a GitHub Release. Triggered manually, by the
+# watch-upstream poller, or by repository_dispatch.
 
 on:
   workflow_dispatch:
@@ -52,29 +53,18 @@ jobs:
         with:
           node-version: 22
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set pnpm store path
+        run: pnpm config set store-dir "$GITHUB_WORKSPACE/.pnpm-store"
 
-      - name: Cache Rust build
-        uses: swatinem/rust-cache@v2
+      # The upstream lockfile changes every release, so the exact key misses on
+      # a new tag; restore-keys still reuses most of the store and only the new
+      # and changed packages are fetched from the registry.
+      - name: Cache pnpm store
+        uses: actions/cache@v4
         with:
-          workspaces: src-tauri
-
-      - name: Install system dependencies for Tauri Linux
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
+          path: .pnpm-store
+          key: pnpm-store-${{ steps.tag.outputs.tag }}
+          restore-keys: pnpm-store-
 
       - name: Clone deepseek-harness at tag
         run: |
@@ -82,44 +72,51 @@ jobs:
           git clone --depth 1 --branch "${{ steps.tag.outputs.tag }}" \
             https://github.com/deepseek-ai/deepseek-harness.git deepseek-harness
 
+      - name: Cache packaging downloads
+        uses: actions/cache@v4
+        with:
+          path: deepseek-harness/apps/desktop/.desktop-build/downloads
+          # Electron, the primary-runtime Node and Python archives, and the
+          # wheel set are stable within a release line.
+          key: dsh-downloads-${{ steps.tag.outputs.tag }}
+          restore-keys: dsh-downloads-
+
+      # electron-builder fetches its AppImage/linuxdeploy tooling on first use.
+      - name: Cache electron-builder tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron-builder
+          key: electron-builder-linux-x64
+
       - name: Install upstream dependencies
         working-directory: deepseek-harness
         run: pnpm install --frozen-lockfile
 
-      # Root orchestrator (scripts/build.ts): builds all workspace packages
-      # in dependency order. The frontend vite build resolves workspace
-      # packages from their lib/ output and fails without this step.
-      - name: Build upstream packages
+      # Upstream ships mac/win release targets only. This patch registers a
+      # linux-x64 target across its packaging scripts (build paths, Electron
+      # executable layout, CLI launcher, smoke test) and gives the existing
+      # linux electron-builder block an icon and executable name. Everything
+      # else — runtime preparation, dsh tree assembly, verification — is
+      # upstream's own pipeline, unmodified.
+      - name: Apply Linux packaging patch
         working-directory: deepseek-harness
-        run: pnpm build
+        run: git apply --verbose ../patches/linux-packaging.patch
 
-      - name: Build upstream web frontend
-        working-directory: deepseek-harness
-        run: pnpm --filter @deepseek-ai/dsh-web-frontend run build
-
-      # The webview never loads dist/ directly: the frontend needs the Host's
-      # rendered boot injections, so the shell spawns `dsh web` as a sidecar
-      # and navigates to its URL. dist/ only carries the loader page.
-      - name: Build Tauri loader page
-        run: npm run build:web
-
-      # The runtime ships as one tar file: linuxdeploy scans every ELF in the
-      # AppDir and node_modules contains binaries it cannot deploy (static
-      # esbuild builds, musl variants, foreign-arch prebuilds). The shell
-      # extracts the archive to the app-data dir on first launch.
-      - name: Stage runtime archive
+      # The packaging pipeline's smoke test executes Electron directly.
+      - name: Install Electron shared libraries
         run: |
-          NODE_VERSION=22.14.0
-          curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"
-          mkdir -p stage/node stage/dsh
-          tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C stage/node --strip-components=1
-          cp -a deepseek-harness/. stage/dsh/
-          rm -rf stage/dsh/.git
-          tar -cf src-tauri/resources/runtime.tar -C stage node dsh
-          rm -rf stage
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libpango-1.0-0 libcairo2
+          sudo apt-get install -y libasound2 || sudo apt-get install -y libasound2t64
 
-      - name: Build AppImage
-        run: npx @tauri-apps/cli@^2 build --bundles appimage
+      # Unsigned: Linux needs no signing credentials, and this skips upstream's
+      # COS update-feed wiring, which this repository cannot publish.
+      - name: Package linux-x64 AppImage
+        working-directory: deepseek-harness
+        run: pnpm --filter @deepseek-ai/dsh-desktop run package -- linux-x64 --unsigned
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -127,7 +124,7 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: DeepSeek Harness Desktop ${{ steps.tag.outputs.tag }}
           body: |
-            Desktop AppImage wrapper for [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) at `${{ steps.tag.outputs.tag }}`.
+            Desktop AppImage wrapper for [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) at `${{ steps.tag.outputs.tag }}`, built with upstream's own Electron Desktop packaging pipeline (linux-x64, unsigned).
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
-          files: src-tauri/target/release/bundle/appimage/*.AppImage
+          files: deepseek-harness/apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/*.AppImage

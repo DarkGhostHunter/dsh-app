@@ -4,24 +4,20 @@
     "dockerfile": "Dockerfile"
   },
   "runArgs": [
-    // Tauri dev runs open a real window; pass the host display through.
-    // Remove if you only build/CI inside the container.
     "--network=host"
   ],
   "containerEnv": {
     "DISPLAY": "${localEnv:DISPLAY}"
   },
-  "forwardPorts": [5373, 1420],
+  "forwardPorts": [5373],
   "customizations": {
     "vscode": {
       "extensions": [
-        "rust-lang.rust-analyzer",
-        "tauri-apps.tauri-vscode",
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode"
       ]
     }
   },
   "remoteUser": "vscode",
-  "postCreateCommand": "rustc --version && node --version && pnpm --version && cargo tauri --version"
+  "postCreateCommand": "node --version && pnpm --version"
 }
