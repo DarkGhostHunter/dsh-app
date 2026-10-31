@@ -6,7 +6,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-TAG="${1:-$(gh api repos/deepseek-ai/deepseek-harness/tags --jq '[.[].name | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))][0]')}"
+# Resolve the latest dsh-v* tag by semver (prereleases included); the /tags
+# API's ordering is undocumented and has been observed to shuffle when a tag
+# gets re-pushed, so do not trust its first element.
+TAG="${1:-$(gh api repos/deepseek-ai/deepseek-harness/tags --paginate \
+  --jq '[.[].name
+    | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))
+    | { name: .,
+        k: (capture("^dsh-v(?<M>[0-9]+)\\.(?<m>[0-9]+)\\.(?<p>[0-9]+)(?:-(?<pre>[0-9A-Za-z.-]+))?$") |
+            [(.M|tonumber), (.m|tonumber), (.p|tonumber),
+             (if .pre == null then 1 else 0 end),
+             (if .pre == null then [] else [.pre | split(".") | map(try tonumber catch .)] end)]) }]
+    | sort_by(.k) | last | .name')}"
 echo "Building upstream tag: $TAG"
 
 rm -rf deepseek-harness

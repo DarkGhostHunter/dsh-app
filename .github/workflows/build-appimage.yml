@@ -31,7 +31,17 @@ jobs:
           set -euo pipefail
           TAG="${{ github.event.client_payload.tag || inputs.tag }}"
           if [ -z "$TAG" ]; then
-            TAG=$(gh api repos/deepseek-ai/deepseek-harness/tags --jq '[.[].name | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))][0]')
+            # Semver-max with prereleases included, same as the watcher: the
+            # /tags API order is not reliable.
+            TAG=$(gh api repos/deepseek-ai/deepseek-harness/tags --paginate \
+              --jq '[.[].name
+                | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))
+                | { name: .,
+                    k: (capture("^dsh-v(?<M>[0-9]+)\\.(?<m>[0-9]+)\\.(?<p>[0-9]+)(?:-(?<pre>[0-9A-Za-z.-]+))?$") |
+                        [(.M|tonumber), (.m|tonumber), (.p|tonumber),
+                         (if .pre == null then 1 else 0 end),
+                         (if .pre == null then [] else [.pre | split(".") | map(try tonumber catch .)] end)]) }]
+                | sort_by(.k) | last | .name')
           fi
           if [ -z "$TAG" ]; then
             echo "No upstream tag found" >&2
@@ -51,7 +61,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # alpha.2 raised the engines floor to >=24.9.0.
+          node-version: 24
 
       - name: Set pnpm store path
         run: pnpm config set store-dir "$GITHUB_WORKSPACE/.pnpm-store"
