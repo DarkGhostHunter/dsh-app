@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Check for unreleased upstream tag
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG=$(gh api repos/deepseek-ai/deepseek-harness/tags --paginate \
