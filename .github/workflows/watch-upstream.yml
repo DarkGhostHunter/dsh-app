@@ -2,7 +2,9 @@ name: Watch upstream releases
 
 # We don't control deepseek-ai/deepseek-harness, so we can't place a
 # notify workflow there. Instead, poll its tags on a schedule and
-# trigger a build for any stable tag we haven't released yet.
+# trigger a build for any upstream tag we haven't released yet.
+# Upstream ships prereleases (alpha/beta/rc) for the foreseeable future,
+# so don't filter for stability: any dsh-v* tag is a release worth shipping.
 
 on:
   schedule:
@@ -11,6 +13,10 @@ on:
 
 permissions:
   contents: read
+  # Creating a workflow dispatch event (gh workflow run build-appimage.yml)
+  # requires actions:write; without it every poll 403s once there is
+  # actually something new to build.
+  actions: write
 
 jobs:
   watch:
@@ -21,8 +27,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # /tags order is undocumented and has been observed to shuffle when a
+          # tag gets re-pushed, so resolve the latest dsh-v tag by semver
+          # (prereleases included) instead of trusting the API's ordering.
           TAG=$(gh api repos/deepseek-ai/deepseek-harness/tags --paginate \
-            --jq '[.[].name | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))][0]')
+            --jq '[.[].name
+              | select(test("^dsh-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))
+              | { name: .,
+                  k: (capture("^dsh-v(?<M>[0-9]+)\\.(?<m>[0-9]+)\\.(?<p>[0-9]+)(?:-(?<pre>[0-9A-Za-z.-]+))?$") |
+                      [(.M|tonumber), (.m|tonumber), (.p|tonumber),
+                       (if .pre == null then 1 else 0 end),
+                       (if .pre == null then [] else [.pre | split(".") | map(try tonumber catch .)] end)]) }]
+              | sort_by(.k) | last | .name')
           echo "Latest upstream tag: $TAG"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "Already released here; nothing to do."
