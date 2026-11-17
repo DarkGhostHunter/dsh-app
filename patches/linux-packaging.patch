@@ -13,7 +13,7 @@ index ee657a3d..dd0de6eb 100644
 +esac
 +ELECTRON_RUN_AS_NODE=1 exec "$binary" --expose-internals "$resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js" "$@"
 diff --git a/apps/desktop/scripts/desktop-auto-update-environment.d.mts b/apps/desktop/scripts/desktop-auto-update-environment.d.mts
-index 4d42b3dd..87b29dee 100644
+index c58df5a0..f85721d2 100644
 --- a/apps/desktop/scripts/desktop-auto-update-environment.d.mts
 +++ b/apps/desktop/scripts/desktop-auto-update-environment.d.mts
 @@ -5,7 +5,7 @@ export const DESKTOP_AUTO_UPDATE_ENV: 'DSH_DESKTOP_AUTO_UPDATE_ENV'
@@ -26,7 +26,7 @@ index 4d42b3dd..87b29dee 100644
  /**
   * Name the fixed installer object shared by uploading and cache refresh.
 diff --git a/apps/desktop/scripts/desktop-auto-update-environment.mjs b/apps/desktop/scripts/desktop-auto-update-environment.mjs
-index 835beadd..cc31af4c 100644
+index 24aaa0ea..79e328cf 100644
 --- a/apps/desktop/scripts/desktop-auto-update-environment.mjs
 +++ b/apps/desktop/scripts/desktop-auto-update-environment.mjs
 @@ -33,7 +33,7 @@ const UPDATE_ENVIRONMENTS = {
@@ -103,10 +103,10 @@ index ec9da721..76c07e5e 100644
    options?: { unsigned?: boolean, prepareOnly?: boolean, skipNotarization?: boolean },
  ): void
 diff --git a/apps/desktop/scripts/desktop-package-environment.mjs b/apps/desktop/scripts/desktop-package-environment.mjs
-index 27a7f92c..56417fe3 100644
+index 83e9dbbc..3f81e984 100644
 --- a/apps/desktop/scripts/desktop-package-environment.mjs
 +++ b/apps/desktop/scripts/desktop-package-environment.mjs
-@@ -156,9 +156,9 @@ export function validateDesktopPackageEnvironment(environment, target, options =
+@@ -121,9 +121,9 @@ export function validateDesktopPackageEnvironment(environment, target, options =
    resolveDesktopTargetBuildPaths(environment, target.platform, target.arch)
    resolveDesktopAppId(environment)
    resolveNpmRegistry(environment)
@@ -118,12 +118,25 @@ index 27a7f92c..56417fe3 100644
    if (options.unsigned) return
    if (!options.prepareOnly) resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
    if (target.platform === 'win32') {
+diff --git a/apps/desktop/scripts/desktop-publish-targets.ts b/apps/desktop/scripts/desktop-publish-targets.ts
+index 3270b99b..2e8a271e 100644
+--- a/apps/desktop/scripts/desktop-publish-targets.ts
++++ b/apps/desktop/scripts/desktop-publish-targets.ts
+@@ -8,7 +8,7 @@ export const desktopPackageWorkflows = {
+   'win-x64': '.github/workflows/windows-package.yml',
+ } as const
+ 
+-const targetSchema = z.enum(['mac-arm64', 'mac-x64', 'win-x64'])
++const targetSchema = z.enum(['mac-arm64', 'mac-x64', 'win-x64', 'linux-x64'])
+ 
+ /** Machine labels are unique; a scalar target is shorthand for a one-element target list. */
+ export const desktopPublishRunnersSchema = z.record(z.string(), z.object({
 diff --git a/apps/desktop/scripts/desktop-release-store.ts b/apps/desktop/scripts/desktop-release-store.ts
-index c080272e..83ec26c4 100644
+index eb9d5457..37798609 100644
 --- a/apps/desktop/scripts/desktop-release-store.ts
 +++ b/apps/desktop/scripts/desktop-release-store.ts
 @@ -17,7 +17,7 @@ const sourceSchema = z.strictObject({
-   channel: z.enum(['nightly', 'latest']),
+   channel: z.enum(['nightly', 'stable']),
    runnerName: z.string().min(1),
    // Storage accepts every Desktop target; CI routing separately limits currently provisioned platforms.
 -  target: z.enum(['mac-arm64', 'mac-x64', 'win-x64']),
@@ -154,7 +167,7 @@ index ff855cfd..08c8dc1f 100644
  ): Promise<void> {
    const failures = await probeDesktopToolchain(platform, environment)
 diff --git a/apps/desktop/scripts/desktop-upload-plan.ts b/apps/desktop/scripts/desktop-upload-plan.ts
-index 1461444f..1adda3f1 100644
+index 39ff954b..b53b1267 100644
 --- a/apps/desktop/scripts/desktop-upload-plan.ts
 +++ b/apps/desktop/scripts/desktop-upload-plan.ts
 @@ -21,6 +21,7 @@ const TARGETS = {
@@ -166,7 +179,7 @@ index 1461444f..1adda3f1 100644
    readonly platform: NodeJS.Platform
    readonly arch: string
 diff --git a/apps/desktop/scripts/electron-builder-config.mjs b/apps/desktop/scripts/electron-builder-config.mjs
-index cf0c19e8..73071256 100644
+index d5522e3d..7ac1d62a 100644
 --- a/apps/desktop/scripts/electron-builder-config.mjs
 +++ b/apps/desktop/scripts/electron-builder-config.mjs
 @@ -66,7 +66,7 @@ export function createElectronBuilderConfig(
@@ -178,7 +191,7 @@ index cf0c19e8..73071256 100644
    if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
    const macOSSigning = packagesMacOS && !unsigned ? resolveMacOSSigningEnvironment(env) : undefined
    if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
-@@ -255,6 +255,8 @@ export function createElectronBuilderConfig(
+@@ -257,6 +257,8 @@ export function createElectronBuilderConfig(
      linux: {
        category: 'Development',
        target: ['AppImage'],
@@ -307,10 +320,10 @@ index 6c3c12c8..9c93bc7c 100644
    resolveDesktopPackageTarget(target))
  if (windows && !values.unsigned) await verifyWindowsCode(application)
 diff --git a/apps/desktop/scripts/smoke-runtime.ts b/apps/desktop/scripts/smoke-runtime.ts
-index bbc2d3e7..4ebb4f29 100644
+index fa2b2f5c..a7b3f92d 100644
 --- a/apps/desktop/scripts/smoke-runtime.ts
 +++ b/apps/desktop/scripts/smoke-runtime.ts
-@@ -75,7 +75,8 @@ export function apply(ctx) {
+@@ -89,7 +89,8 @@ export function apply(ctx) {
      await promisify(execFile)(dependencies.python, ['-I', '-B',
        fileURLToPath(new URL('../tests/fixtures/office-conversion-inputs.py', import.meta.url)), home],
      { env: environment, timeout: 120_000, windowsHide: true })
@@ -320,53 +333,27 @@ index bbc2d3e7..4ebb4f29 100644
        bytes: readFileSync(join(home, `input.${extension}`)).toString('base64') }))
      const cordis = runtime.sharedPackages.find(entry => entry.name === '@deepseek-ai/cordis')
      if (cordis === undefined) throw new Error('desktop runtime: missing shared Cordis package')
-@@ -176,15 +177,19 @@ export function apply(ctx) {
-         throw new Error(`desktop runtime: invalid ${extension} PDF output`)
-       }
-     }
--    const cliResponse = await fetch(new URL('/desktop-smoke-office-cli', ready.url), {
--      headers: { cookie }, signal: AbortSignal.timeout(120_000),
--    })
--    if (!cliResponse.ok) throw new Error(`desktop runtime: skill CLI failed: ${await cliResponse.text()}`)
--    const cliResult = await cliResponse.json() as { capabilities: { runtime: { cliPath: string } }; pdf: string }
--    if (!cliResult.capabilities.runtime.cliPath.endsWith('cli.js') || Buffer.from(cliResult.pdf, 'base64').subarray(0, 5).toString() !== '%PDF-') {
--      throw new Error('desktop runtime: skill CLI did not return capabilities and a PDF')
-+    if (process.platform !== 'linux') {
-+      const cliResponse = await fetch(new URL('/desktop-smoke-office-cli', ready.url), {
-+        headers: { cookie }, signal: AbortSignal.timeout(120_000),
-+      })
-+      if (!cliResponse.ok) throw new Error(`desktop runtime: skill CLI failed: ${await cliResponse.text()}`)
-+      const cliResult = await cliResponse.json() as { capabilities: { runtime: { cliPath: string } }; pdf: string }
-+      if (!cliResult.capabilities.runtime.cliPath.endsWith('cli.js') || Buffer.from(cliResult.pdf, 'base64').subarray(0, 5).toString() !== '%PDF-') {
-+        throw new Error('desktop runtime: skill CLI did not return capabilities and a PDF')
-+      }
-+      console.log('desktop runtime: DOCX, XLSX, PPTX to PDF and skill CLI discovery passed')
-+    } else {
-+      console.log('desktop runtime: Host boot, frontend and plugin checks passed; Office conversion skipped (no published Linux engine)')
-     }
--    console.log('desktop runtime: DOCX, XLSX, PPTX to PDF and skill CLI discovery passed')
-   } finally {
-     clearTimeout(timer)
-     try { await host.stop() } finally {
 diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
-index 4770fe83..d32ac78a 100644
+index 8f9cd823..72ab6bb1 100644
 --- a/apps/desktop/src/main.ts
 +++ b/apps/desktop/src/main.ts
-@@ -1077,10 +1077,10 @@ async function main(): Promise<void> {
-     { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
+@@ -1232,11 +1232,11 @@ async function main(): Promise<void> {
+     devToolsF12Shortcut,
    ]
    const refreshApplicationMenu = (): void => {
--    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{
--      label: darwin ? app.name : currentDesktopLocale().messages.application,
-+    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'darwin' ? [{
-+      label: app.name,
-       submenu: [...applicationItems(), ...devToolsItems],
--    }, ...platformMenus()]))
-+    }, ...platformMenus()] : devToolsItems))
+-    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
+-      ? windowsDevToolsShortcuts : [{
+-        label: darwin ? app.name : currentDesktopLocale().messages.application,
++    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'darwin'
++      ? [{
++        label: app.name,
+         submenu: [...applicationItems(), devToolsF12Shortcut],
+-      }, ...platformMenus()]))
++      }, ...platformMenus()] : windowsDevToolsShortcuts))
      tray?.relabel()
    }
    refreshApplicationMenu()
-@@ -1165,6 +1165,8 @@ async function main(): Promise<void> {
+@@ -1321,6 +1321,8 @@ async function main(): Promise<void> {
    }
    const createMainWindow = (): BrowserWindow => {
      const window = createWindow(appPreload, false, true)
@@ -375,7 +362,7 @@ index 4770fe83..d32ac78a 100644
      mainWindow = window
      browserGuests.bind(window, (guest, name) => shortcuts.attachGuest(window, guest, name))
      shortcuts.attach(window)
-@@ -1172,6 +1174,7 @@ async function main(): Promise<void> {
+@@ -1328,6 +1330,7 @@ async function main(): Promise<void> {
      // Closing hides: the page and the Host keep running, and the next show resumes the same document.
      window.on('close', (event) => {
        if (quitting || shellInstallerOwnsQuit || sessionEnding) return

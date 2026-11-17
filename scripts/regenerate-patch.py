@@ -113,6 +113,11 @@ EDITS = [
     ('apps/desktop/scripts/desktop-release-store.ts',
      "  target: z.enum(['mac-arm64', 'mac-x64', 'win-x64']),",
      "  target: z.enum(['mac-arm64', 'mac-x64', 'win-x64', 'linux-x64']),"),
+    # The machine-routes schema must accept the widened DesktopAutoUpdateTarget
+    # (used by retain-desktop-ci.ts) or the host typecheck rejects our union.
+    ('apps/desktop/scripts/desktop-publish-targets.ts',
+     "const targetSchema = z.enum(['mac-arm64', 'mac-x64', 'win-x64'])",
+     "const targetSchema = z.enum(['mac-arm64', 'mac-x64', 'win-x64', 'linux-x64'])"),
     ('apps/desktop/scripts/desktop-upload-plan.ts',
      "  'win-x64': { platform: 'win32', arch: 'x64', os: 'win' },\n}",
      "  'win-x64': { platform: 'win32', arch: 'x64', os: 'win' },\n  'linux-x64': { platform: 'linux', arch: 'x64', os: 'linux' },\n}"),
@@ -187,48 +192,31 @@ const executable = windows ? join(application, 'DeepSeek Harness.exe')
   // every Electron context; skip the check here rather than fail the build.
   if (process.platform !== 'linux') await checkSharp()"""),
     # --- Smoke test: no Linux LibreOffice engine is published, skip conversion ---
+    # Upstream replaced the old office-CLI smoke with officeKit plugin routes,
+    # but both conversion loops still iterate the fixture inputs, so an empty
+    # input list on Linux skips every conversion (the linux-x64-glibc engine
+    # is referenced upstream yet still unpublished; office-kit then fails the
+    # operation with "Installed LibreOfficeKit package is incomplete").
     ('apps/desktop/scripts/smoke-runtime.ts',
      """    const inputs = ['docx', 'xlsx', 'pptx'].map(extension => ({ extension,
       bytes: readFileSync(join(home, `input.${extension}`)).toString('base64') }))""",
      """    // No Linux LibreOffice engine is published, so conversion fixtures are only exercised off Linux.
     const inputs = process.platform === 'linux' ? [] : ['docx', 'xlsx', 'pptx'].map(extension => ({ extension,
       bytes: readFileSync(join(home, `input.${extension}`)).toString('base64') }))"""),
-    ('apps/desktop/scripts/smoke-runtime.ts',
-     """    const cliResponse = await fetch(new URL('/desktop-smoke-office-cli', ready.url), {
-      headers: { cookie }, signal: AbortSignal.timeout(120_000),
-    })
-    if (!cliResponse.ok) throw new Error(`desktop runtime: skill CLI failed: ${await cliResponse.text()}`)
-    const cliResult = await cliResponse.json() as { capabilities: { runtime: { cliPath: string } }; pdf: string }
-    if (!cliResult.capabilities.runtime.cliPath.endsWith('cli.js') || Buffer.from(cliResult.pdf, 'base64').subarray(0, 5).toString() !== '%PDF-') {
-      throw new Error('desktop runtime: skill CLI did not return capabilities and a PDF')
-    }
-    console.log('desktop runtime: DOCX, XLSX, PPTX to PDF and skill CLI discovery passed')""",
-     """    if (process.platform !== 'linux') {
-      const cliResponse = await fetch(new URL('/desktop-smoke-office-cli', ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(120_000),
-      })
-      if (!cliResponse.ok) throw new Error(`desktop runtime: skill CLI failed: ${await cliResponse.text()}`)
-      const cliResult = await cliResponse.json() as { capabilities: { runtime: { cliPath: string } }; pdf: string }
-      if (!cliResult.capabilities.runtime.cliPath.endsWith('cli.js') || Buffer.from(cliResult.pdf, 'base64').subarray(0, 5).toString() !== '%PDF-') {
-        throw new Error('desktop runtime: skill CLI did not return capabilities and a PDF')
-      }
-      console.log('desktop runtime: DOCX, XLSX, PPTX to PDF and skill CLI discovery passed')
-    } else {
-      console.log('desktop runtime: Host boot, frontend and plugin checks passed; Office conversion skipped (no published Linux engine)')
-    }"""),
     # --- Linux desktop behavior: no menu bar, close quits ---
+    # Linux renders no menu bar; the darwin-only template keeps the DevTools
+    # accelerators (upstream's windowsDevToolsShortcuts) as the Linux template.
     ('apps/desktop/src/main.ts',
-     "    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{",
-     "    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'darwin' ? [{"),
-    ('apps/desktop/src/main.ts',
-     """    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'darwin' ? [{
-      label: darwin ? app.name : currentDesktopLocale().messages.application,
-      submenu: [...applicationItems(), ...devToolsItems],
-    }, ...platformMenus()]))""",
-     """    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'darwin' ? [{
-      label: app.name,
-      submenu: [...applicationItems(), ...devToolsItems],
-    }, ...platformMenus()] : devToolsItems))"""),
+     """    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
+      ? windowsDevToolsShortcuts : [{
+        label: darwin ? app.name : currentDesktopLocale().messages.application,
+        submenu: [...applicationItems(), devToolsF12Shortcut],
+      }, ...platformMenus()]))""",
+     """    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'darwin'
+      ? [{
+        label: app.name,
+        submenu: [...applicationItems(), devToolsF12Shortcut],
+      }, ...platformMenus()] : windowsDevToolsShortcuts))"""),
     ('apps/desktop/src/main.ts',
      """  const createMainWindow = (): BrowserWindow => {
     const window = createWindow(appPreload, false, true)
